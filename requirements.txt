@@ -5,3 +5,6 @@ folium
 streamlit-folium
 python-dotenv
 plotly
+scikit-learn
+xgboost
+

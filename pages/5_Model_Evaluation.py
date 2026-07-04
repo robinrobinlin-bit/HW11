@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from services.database import query_all_regions, query_region_forecasts
+import plotly.express as px
+import plotly.graph_objects as go
 from services.prediction_service import PredictionService
 
 # Page configuration
@@ -17,84 +18,176 @@ st.markdown("""
     html, body, [class*="css"] {
         font-family: 'Outfit', sans-serif;
     }
-    .metrics-header {
-        font-size: 1.2rem;
+    .eval-section-title {
+        font-size: 1.25rem;
         font-weight: 700;
         color: #f0f6fc;
+        margin-top: 20px;
         margin-bottom: 12px;
+        border-left: 4px solid #58a6ff;
+        padding-left: 10px;
+    }
+    .metrics-container {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 AI 氣溫預測模型評估 (Model Evaluation & Metrics)")
+st.title("📈 迴歸預測模型定量評估 (Quantitative Model Evaluation)")
 st.markdown("""
-此頁面提供機器學習預測模型與中央氣象署 (CWA) 官方預報的定量誤差分析，計算平均絕對誤差 (MAE) 與均方根誤差 (RMSE) 指標。
+本分頁展示 **RandomForestRegressor** 與 **XGBoostRegressor** 迴歸模型在測試集上的效能評估指標與特徵貢獻度權重。
 """)
 
-regions_list = query_all_regions()
+# Load metrics
+with st.spinner("載入模型評估指標中..."):
+    try:
+        metrics = PredictionService.get_metrics()
+    except Exception:
+        metrics = PredictionService.train_models()
 
-if not regions_list:
-    st.warning("資料庫目前為空。請先執行氣象數據抓取！")
-else:
-    selected_region = st.selectbox(
-        "選擇評估地區：",
-        options=regions_list,
-        key="evaluation_region_selector"
-    )
-    
-    # Fetch data
-    df_base = query_region_forecasts(selected_region)
-    df_pred = PredictionService.predict_temperature(selected_region)
-    metrics = PredictionService.calculate_evaluation_metrics(selected_region)
-    
-    if df_base.empty or df_pred.empty:
-        st.info("該地區數據不足以進行誤差評估。")
-    else:
-        # Show Metrics Cards
-        st.markdown("<div class='metrics-header'>📊 預測誤差統計指標 (MAE & RMSE)</div>", unsafe_allow_html=True)
-        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+rf_m = metrics["rf"]
+xgb_m = metrics["xgb"]
+
+# ----------------- SIDE-BY-SIDE METRICS CARD DISPLAY -----------------
+st.markdown("<div class='eval-section-title'>📊 迴歸精準度指標對比 (RandomForest vs XGBoost)</div>", unsafe_allow_html=True)
+
+col_rf, col_xgb = st.columns(2, gap="large")
+
+with col_rf:
+    st.markdown("<div class='metrics-container'>", unsafe_allow_html=True)
+    st.markdown("#### 🌳 RandomForestRegressor 表現")
+    col_rf1, col_rf2, col_rf3 = st.columns(3)
+    with col_rf1:
+        st.metric("平均絕對誤差 (MAE)", f"{rf_m['maxt_mae']:.2f} °C", help="Mean Absolute Error")
+    with col_rf2:
+        st.metric("均方根誤差 (RMSE)", f"{rf_m['maxt_rmse']:.2f} °C", help="Root Mean Squared Error")
+    with col_rf3:
+        st.metric("判定係數 (R²)", f"{rf_m['maxt_r2']:.2f}", help="Coefficient of Determination")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col_xgb:
+    st.markdown("<div class='metrics-container'>", unsafe_allow_html=True)
+    st.markdown("#### 🚀 XGBoostRegressor 表現")
+    col_xgb1, col_xgb2, col_xgb3 = st.columns(3)
+    with col_xgb1:
+        st.metric("平均絕對誤差 (MAE)", f"{xgb_m['maxt_mae']:.2f} °C", help="Mean Absolute Error")
+    with col_xgb2:
+        st.metric("均方根誤差 (RMSE)", f"{xgb_m['maxt_rmse']:.2f} °C", help="Root Mean Squared Error")
+    with col_xgb3:
+        st.metric("判定係數 (R²)", f"{xgb_m['maxt_r2']:.2f}", help="Coefficient of Determination")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ----------------- PLOTLY INTERACTIVE SCATTER PLOT (ACTUAL VS PREDICTED) -----------------
+st.markdown("<div class='eval-section-title'>🎯 實測值 vs 預測值對角散佈圖 (Actual vs Predicted Scatter)</div>", unsafe_allow_html=True)
+
+df_scatter = PredictionService.get_test_predictions_for_scatter()
+
+col_sc1, col_sc2 = st.columns(2, gap="large")
+
+with col_sc1:
+    st.markdown("##### RandomForest 擬合散佈圖")
+    if not df_scatter.empty:
+        fig_rf_sc = go.Figure()
         
-        with col_m1:
-            st.metric(
-                label="最低氣溫平均絕對誤差 (MinT MAE)",
-                value=f"{metrics['mint_mae']:.2f} °C",
-                help="Mean Absolute Error: 預測最低溫與官方預報平均絕對偏差度"
-            )
-        with col_m2:
-            st.metric(
-                label="最低氣溫均方根誤差 (MinT RMSE)",
-                value=f"{metrics['mint_rmse']:.2f} °C",
-                help="Root Mean Squared Error: 預測最低溫的標準差誤差（對大偏差更敏感）"
-            )
-        with col_m3:
-            st.metric(
-                label="最高氣溫平均絕對誤差 (MaxT MAE)",
-                value=f"{metrics['maxt_mae']:.2f} °C",
-                help="Mean Absolute Error: 預測最高溫與官方預報平均絕對偏差度"
-            )
-        with col_m4:
-            st.metric(
-                label="最高氣溫均方根誤差 (MaxT RMSE)",
-                value=f"{metrics['maxt_rmse']:.2f} °C",
-                help="Root Mean Squared Error: 預測最高溫的標準差誤差"
-            )
-            
-        st.markdown("---")
+        # Points
+        fig_rf_sc.add_trace(go.Scatter(
+            x=df_scatter["actual"],
+            y=df_scatter["rf_predicted"],
+            mode="markers",
+            marker=dict(color="#58a6ff", size=8, opacity=0.7),
+            name="RF 預測點"
+        ))
         
-        # Comparison curve
-        df_merged = pd.merge(df_base, df_pred, on=["regionName", "dataDate"])
+        # Diagonal Line (y=x)
+        min_val = min(df_scatter["actual"].min(), df_scatter["rf_predicted"].min())
+        max_val = max(df_scatter["actual"].max(), df_scatter["rf_predicted"].max())
+        fig_rf_sc.add_trace(go.Scatter(
+            x=[min_val, max_val],
+            y=[min_val, max_val],
+            mode="lines",
+            line=dict(color="#ff7b72", dash="dash"),
+            name="完美擬合對角線"
+        ))
         
-        col_curve, col_residuals = st.columns([1, 1], gap="large")
+        fig_rf_sc.update_layout(
+            xaxis_title="實際溫度 (CWA Actual, °C)",
+            yaxis_title="RF 預測溫度 (°C)",
+            margin=dict(l=40, r=40, t=20, b=40)
+        )
+        st.plotly_chart(fig_rf_sc, use_container_width=True)
+
+with col_sc2:
+    st.markdown("##### XGBoost 擬合散佈圖")
+    if not df_scatter.empty:
+        fig_xgb_sc = go.Figure()
         
-        with col_curve:
-            st.markdown("### 📈 官方預報 vs AI 預測曲線")
-            chart_df = df_merged.set_index("dataDate")[["maxt", "predicted_maxt", "mint", "predicted_mint"]]
-            chart_df.columns = ["官方最高溫", "AI預測最高溫", "官方最低溫", "AI預測最低溫"]
-            st.line_chart(chart_df, color=["#ff7b72", "#ffb454", "#58a6ff", "#00d2ff"])
-            
-        with col_residuals:
-            st.markdown("### 📊 預測殘差與誤差變量 (Error Residuals)")
-            residuals_df = df_merged.set_index("dataDate")[["error_maxt", "error_mint"]]
-            residuals_df.columns = ["最高溫預測誤差 (MaxT Error)", "最低溫預測誤差 (MinT Error)"]
-            st.bar_chart(residuals_df, color=["#ff9e3b", "#06b6d4"])
-            st.caption("🔍 誤差線越接近 0 軸，代表 AI 模型與官方預報的契合度越高，預測越準確。")
+        # Points
+        fig_xgb_sc.add_trace(go.Scatter(
+            x=df_scatter["actual"],
+            y=df_scatter["xgb_predicted"],
+            mode="markers",
+            marker=dict(color="#d2a8ff", size=8, opacity=0.7),
+            name="XGB 預測點"
+        ))
+        
+        # Diagonal Line (y=x)
+        fig_xgb_sc.add_trace(go.Scatter(
+            x=[min_val, max_val],
+            y=[min_val, max_val],
+            mode="lines",
+            line=dict(color="#ff7b72", dash="dash"),
+            name="完美擬合對角線"
+        ))
+        
+        fig_xgb_sc.update_layout(
+            xaxis_title="實際溫度 (CWA Actual, °C)",
+            yaxis_title="XGB 預測溫度 (°C)",
+            margin=dict(l=40, r=40, t=20, b=40)
+        )
+        st.plotly_chart(fig_xgb_sc, use_container_width=True)
+
+# ----------------- PLOTLY BAR CHART (FEATURE IMPORTANCE) -----------------
+st.markdown("<div class='eval-section-title'>🔑 機器學習特徵權重重要性比對 (Feature Importances)</div>", unsafe_allow_html=True)
+
+rf_fi = rf_m["maxt_feature_importance"]
+xgb_fi = xgb_m["maxt_feature_importance"]
+
+# Build dataframe
+features = list(rf_fi.keys())
+fi_records = []
+for f in features:
+    fi_records.append({"Feature": f, "Model": "RandomForest", "Importance": rf_fi[f]})
+    fi_records.append({"Feature": f, "Model": "XGBoost", "Importance": xgb_fi[f]})
+df_fi = pd.DataFrame(fi_records)
+
+# Translate features to readable names
+feature_labels = {
+    "region_code": "地區編碼 (Region)",
+    "month": "預報月份 (Month)",
+    "day": "當月日期 (Day)",
+    "dayofweek": "星期代碼 (Weekday)",
+    "dayofyear": "年度累計日 (Day of Year)"
+}
+df_fi["Feature"] = df_fi["Feature"].map(feature_labels)
+
+fig_fi = px.bar(
+    df_fi,
+    x="Feature",
+    y="Importance",
+    color="Model",
+    barmode="group",
+    color_discrete_map={"RandomForest": "#58a6ff", "XGBoost": "#d2a8ff"},
+    labels={"Importance": "特徵重要性比例", "Feature": "預測特徵項目"}
+)
+
+fig_fi.update_layout(
+    margin=dict(l=40, r=40, t=20, b=40),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+st.plotly_chart(fig_fi, use_container_width=True)
+st.caption("🔍 特徵權重越高代表該變量對於氣溫預估的貢獻與決策樹分裂次數越多。地區與年度累計日通常具有較高權重。")
