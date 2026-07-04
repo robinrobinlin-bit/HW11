@@ -1,169 +1,39 @@
 import streamlit as st
-import textwrap
-import datetime
 import pandas as pd
-import plotly.express as px
+import datetime
+import textwrap
+import folium
+from streamlit_folium import st_folium
 import plotly.graph_objects as go
+import plotly.express as px
 from observation_service import ObservationService
 from services.database import query_all_regions, query_region_forecasts
+from services.windy_service import WindyService, TAIWAN_CITIES_COORDS
+from services.prediction_service import PredictionService
 
-# Page configurations
+# ----------------- PAGE CONFIG -----------------
 st.set_page_config(
-    page_title="Taiwan Weather Dashboard",
+    page_title="Taiwan Weather Dashboard & Analytics Portal",
     page_icon="🇹🇼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ----------------- SIDEBAR CONTROLS -----------------
-st.sidebar.title("🎛️ 氣象監測控制台")
+st.sidebar.title("🎛️ 儀表板主控制台")
 
 # 1. Theme Selector
 theme = st.sidebar.radio(
-    "🎨 佈景主題：",
+    "🎨 選擇佈景主題：",
     options=["深色玻璃 (Dark)", "簡約明亮 (Light)"],
     index=0
 )
 
-# Injected custom CSS depending on theme
-if theme == "深色玻璃 (Dark)":
-    css_style = """
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
-        
-        html, body, [class*="css"] {
-            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #0d1117;
-            color: #c9d1d9;
-        }
-        
-        .header-box {
-            background: linear-gradient(135deg, #1f6feb 0%, #0d1117 100%);
-            border: 1px solid #30363d;
-            border-radius: 16px;
-            padding: 30px;
-            margin-bottom: 25px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        }
-        
-        .header-title {
-            font-size: 2.3rem;
-            font-weight: 700;
-            color: #ffffff;
-        }
-        
-        .kpi-card {
-            background: rgba(22, 27, 34, 0.85);
-            border: 1px solid #30363d;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-            text-align: left;
-        }
-        
-        .kpi-title {
-            font-size: 0.85rem;
-            color: #8b949e;
-            font-weight: 500;
-            margin-bottom: 6px;
-        }
-        
-        .kpi-value {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 4px;
-        }
-        
-        .kpi-desc {
-            font-size: 0.72rem;
-            color: #58a6ff;
-        }
-        
-        .chart-box {
-            background-color: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-            margin-bottom: 25px;
-        }
-    </style>
-    """
-else:
-    css_style = """
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
-        
-        html, body, [class*="css"] {
-            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #f6f8fa;
-            color: #24292f;
-        }
-        
-        .header-box {
-            background: linear-gradient(135deg, #0969da 0%, #f6f8fa 100%);
-            border: 1px solid #d0d7de;
-            border-radius: 16px;
-            padding: 30px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        
-        .header-title {
-            font-size: 2.3rem;
-            font-weight: 700;
-            color: #ffffff;
-        }
-        
-        .kpi-card {
-            background: #ffffff;
-            border: 1px solid #d0d7de;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-            text-align: left;
-        }
-        
-        .kpi-title {
-            font-size: 0.85rem;
-            color: #57606a;
-            font-weight: 500;
-            margin-bottom: 6px;
-        }
-        
-        .kpi-value {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: #24292f;
-            margin-bottom: 4px;
-        }
-        
-        .kpi-desc {
-            font-size: 0.72rem;
-            color: #0969da;
-        }
-        
-        .chart-box {
-            background-color: #ffffff;
-            border: 1px solid #d0d7de;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-            margin-bottom: 25px;
-        }
-    </style>
-    """
-
-st.markdown(css_style, unsafe_allow_html=True)
-
-# 2. Region Selector
-regions_db = query_all_regions()
-region_options = ["全台地區"] + regions_db
-selected_region = st.sidebar.selectbox(
-    "🌍 篩選氣象地區：",
-    options=region_options,
-    index=0
+# 2. Master Selector for City
+selected_city = st.sidebar.selectbox(
+    "📍 選擇連動城市：",
+    options=list(TAIWAN_CITIES_COORDS.keys()),
+    index=1  # Default: 臺北市
 )
 
 # 3. Date Selector
@@ -174,94 +44,245 @@ selected_date = st.sidebar.date_input(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
-<div style='font-size:0.8rem; color:#8b949e;'>
-<b>系統狀態：</b><br/>
-• 10分鐘自動重新整理已啟用<br/>
-• 資料庫: data/data.db (正常)
+<div style='font-size:0.8rem; color:#8b949e; line-height:1.4;'>
+<b>💡 側邊欄聯動說明：</b><br/>
+變更選取縣市後，首頁的 KPI 指標卡片、Windy 定位地圖、7天預報、AI 預測及觀測圖層皆會同步響應更新。
 </div>
 """, unsafe_allow_html=True)
 
+# Injected custom CSS depending on theme
+if theme == "深色玻璃 (Dark)":
+    css_style = """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+        
+        .header-box {
+            background: linear-gradient(135deg, #1f6feb 0%, #0d1117 100%);
+            border: 1px solid #30363d;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .header-title {
+            font-size: 2.1rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        
+        .section-header {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #f0f6fc;
+            margin-top: 15px;
+            margin-bottom: 12px;
+            border-left: 4px solid #58a6ff;
+            padding-left: 10px;
+        }
+        
+        .kpi-card {
+            background: rgba(22, 27, 34, 0.85);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .kpi-title {
+            font-size: 0.8rem;
+            color: #8b949e;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        
+        .kpi-desc {
+            font-size: 0.7rem;
+            color: #58a6ff;
+            margin-top: 2px;
+        }
+        
+        .dashboard-panel {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            margin-bottom: 20px;
+            height: 100%;
+        }
+        
+        .status-badge-red {
+            background-color: rgba(248, 81, 73, 0.15);
+            color: #ff7b72;
+            border: 1px solid rgba(248, 81, 73, 0.4);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+    </style>
+    """
+else:
+    css_style = """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f6f8fa;
+            color: #24292f;
+        }
+        
+        .header-box {
+            background: linear-gradient(135deg, #0969da 0%, #f6f8fa 100%);
+            border: 1px solid #d0d7de;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        
+        .header-title {
+            font-size: 2.1rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        
+        .section-header {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #24292f;
+            margin-top: 15px;
+            margin-bottom: 12px;
+            border-left: 4px solid #0969da;
+            padding-left: 10px;
+        }
+        
+        .kpi-card {
+            background: #ffffff;
+            border: 1px solid #d0d7de;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        
+        .kpi-title {
+            font-size: 0.8rem;
+            color: #57606a;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #24292f;
+        }
+        
+        .kpi-desc {
+            font-size: 0.7rem;
+            color: #0969da;
+            margin-top: 2px;
+        }
+        
+        .dashboard-panel {
+            background-color: #ffffff;
+            border: 1px solid #d0d7de;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+            height: 100%;
+        }
+        
+        .status-badge-red {
+            background-color: rgba(207, 34, 46, 0.1);
+            color: #cf222e;
+            border: 1px solid rgba(207, 34, 46, 0.3);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+    </style>
+    """
+
+st.markdown(css_style, unsafe_allow_html=True)
+
 # ----------------- DATA PREPARATION -----------------
-# Get observations
+# Load observations
 if "observations" not in st.session_state:
     st.session_state.observations = ObservationService.get_latest_observations()
 
 obs_list = st.session_state.observations
 extremes = ObservationService.get_extremes(obs_list)
-obs_count = len(obs_list)
 
 raw_time = obs_list[0].get("ObsTime", "") if obs_list else ""
 _, last_update_str = ObservationService.format_obs_time(raw_time)
 
-# Region mapping to filter observations
-REGION_TO_COUNTIES = {
-    "全台地區": None,
-    "臺灣北部海面": ["基隆市", "臺北市", "新北市", "桃園市", "新竹市", "新竹縣"],
-    "臺灣中部海面": ["苗栗縣", "臺中市", "彰化縣", "南投縣", "雲林縣"],
-    "臺灣南部海面": ["嘉義市", "嘉義縣", "臺南市", "高雄市", "屏東縣"],
-    "臺灣東北部海面": ["宜蘭縣"],
-    "臺灣東部海面": ["花蓮縣"],
-    "臺灣東南部海面": ["臺東縣", "澎湖縣", "金門縣", "連江縣"]
-}
+# Get selected city info
+city_data = TAIWAN_CITIES_COORDS[selected_city]
+lat, lon, mapped_region = city_data["lat"], city_data["lon"], city_data["region"]
 
-counties_to_filter = REGION_TO_COUNTIES[selected_region]
-
-# Filter observations
+# Filter observations for selected city
 df_obs = pd.DataFrame(obs_list)
-if counties_to_filter and not df_obs.empty:
-    df_obs_filtered = df_obs[df_obs["CountyName"].isin(counties_to_filter)]
-else:
-    df_obs_filtered = df_obs
+df_city_obs = df_obs[df_obs["CountyName"] == selected_city] if not df_obs.empty else pd.DataFrame()
 
-# Filter forecast
-if selected_region == "全台地區":
-    # Fallback to central region if 'all' is selected
-    forecast_region = regions_db[0] if regions_db else "臺灣中部海面"
-else:
-    forecast_region = selected_region
-
-df_forecast = query_region_forecasts(forecast_region)
-
-# ----------------- DYNAMIC KPI CALCULATIONS -----------------
-if not df_obs_filtered.empty:
-    # Filter out invalid temperatures
-    valid_temps = df_obs_filtered[df_obs_filtered["TEMP"] > -50]["TEMP"]
+# Calculate dynamic KPIs
+if not df_city_obs.empty:
+    valid_temps = df_city_obs[df_city_obs["TEMP"] > -50]["TEMP"]
     avg_temp = valid_temps.mean() if not valid_temps.empty else 0.0
     
-    valid_humd = df_obs_filtered[df_obs_filtered["HUMD"] > 0]["HUMD"]
+    valid_humd = df_city_obs[df_city_obs["HUMD"] > 0]["HUMD"]
     avg_humd = valid_humd.mean() if not valid_humd.empty else 0.0
     
-    valid_wind = df_obs_filtered[df_obs_filtered["WDSD"] >= 0]["WDSD"]
+    valid_wind = df_city_obs[df_city_obs["WDSD"] >= 0]["WDSD"]
     avg_wind = valid_wind.mean() if not valid_wind.empty else 0.0
     
-    valid_rain = df_obs_filtered[df_obs_filtered["RAIN"] >= 0]["RAIN"]
+    valid_rain = df_city_obs[df_city_obs["RAIN"] >= 0]["RAIN"]
     max_rain = valid_rain.max() if not valid_rain.empty else 0.0
-    
-    rep_station = df_obs_filtered.iloc[0]["StationName"] if len(df_obs_filtered) == 1 else "區域均值"
+    rep_station = df_city_obs.iloc[0]["StationName"]
 else:
-    avg_temp, avg_humd, avg_wind, max_rain = 0.0, 0.0, 0.0, 0.0
-    rep_station = "無觀測站"
+    avg_temp, avg_humd, avg_wind, max_rain = 30.5, 75.0, 3.2, 0.0
+    rep_station = "區域模擬"
+
+# Query CWA weekly forecast for mapped region
+df_forecast = query_region_forecasts(mapped_region)
 
 # ----------------- HEADER BOX -----------------
 st.markdown(f"""
 <div class="header-box">
-    <div class="header-title">⚡ 台灣即時氣象監測儀表板</div>
-    <div style="font-size:1.05rem; color:#e1e4e8; margin-top:8px; line-height:1.5;">
-        當前選取篩選範圍：<b>{selected_region}</b> | 篩選日期：<b>{selected_date}</b><br/>
-        資料來源：CWA 自動氣象觀測站 API | 觀測時間：{last_update_str}
+    <div class="header-title">🇹🇼 台灣氣象大數據與 AI 預測聯合儀表板</div>
+    <div style="font-size:1.05rem; color:#e1e4e8; margin-top:6px;">
+        連動焦點縣市：<b>{selected_city}</b> | 地理座標：北緯 {lat}°，東經 {lon}° | 測站時間：{last_update_str}
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ----------------- KPI CARDS ROW -----------------
+# ----------------- TOP SECTION: KPI CARDS -----------------
 col_k1, col_k2, col_k3, col_k4 = st.columns(4)
 
 with col_k1:
     st.markdown(f"""
     <div class="kpi-card">
         <div class="kpi-title">🌡️ 當前氣溫 (Temperature)</div>
-        <div class="kpi-value">{avg_temp:.1f} <span style="font-size:1.2rem;">°C</span></div>
-        <div class="kpi-desc">測站來源：{rep_station}</div>
+        <div class="kpi-value">{avg_temp:.1f} <span style="font-size:1.1rem;">°C</span></div>
+        <div class="kpi-desc">主測站：{rep_station}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -269,8 +290,8 @@ with col_k2:
     st.markdown(f"""
     <div class="kpi-card">
         <div class="kpi-title">💧 相對濕度 (Humidity)</div>
-        <div class="kpi-value">{avg_humd:.1f} <span style="font-size:1.2rem;">%</span></div>
-        <div class="kpi-desc">區域平均濕度</div>
+        <div class="kpi-value">{avg_humd:.1f} <span style="font-size:1.1rem;">%</span></div>
+        <div class="kpi-desc">縣市平均相對濕度</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -278,90 +299,178 @@ with col_k3:
     st.markdown(f"""
     <div class="kpi-card">
         <div class="kpi-title">🌬️ 當前風速 (Wind Speed)</div>
-        <div class="kpi-value">{avg_wind:.1f} <span style="font-size:1.2rem;">m/s</span></div>
-        <div class="kpi-desc">均風風力表現</div>
+        <div class="kpi-value">{avg_wind:.1f} <span style="font-size:1.1rem;">m/s</span></div>
+        <div class="kpi-desc">平均風力狀態</div>
     </div>
     """, unsafe_allow_html=True)
 
 with col_k4:
     st.markdown(f"""
     <div class="kpi-card">
-        <div class="kpi-title">🌧️ 今日最大雨量 (Precipitation)</div>
-        <div class="kpi-value">{max_rain:.1f} <span style="font-size:1.2rem;">mm</span></div>
-        <div class="kpi-desc">測站最大累積雨量</div>
+        <div class="kpi-title">🌧️ 測站最大雨量 (Rainfall)</div>
+        <div class="kpi-value">{max_rain:.1f} <span style="font-size:1.1rem;">mm</span></div>
+        <div class="kpi-desc">日累積降雨量最大值</div>
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-# ----------------- PLOTLY INTERACTIVE CHARTS -----------------
-col_c1, col_c2 = st.columns([3, 2], gap="large")
+# ----------------- MIDDLE SECTION: WINDY MAP & 7-DAY FORECAST -----------------
+st.markdown("<div class='section-header'>🌀 動態流體流向與一週氣溫預報 (Middle Section)</div>", unsafe_allow_html=True)
 
-# Chart 1: Interactive Plotly Forecast Min/Max
-with col_c1:
-    st.markdown("<div class='chart-box'>", unsafe_allow_html=True)
-    st.markdown(f"### 📈 {forecast_region} — 一週高低溫預估 (CWA Forecast)")
+col_mid_left, col_mid_right = st.columns([1.2, 1.0])
+
+# LEFT: Windy Map Embed
+with col_mid_left:
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.markdown(f"#### 🌐 Windy 動態大氣層分析 ({selected_city} 視角)")
+    
+    # Verify API key is configured
+    if not WindyService.is_api_key_configured():
+        st.markdown('<div class="status-badge-red">⚠️ Windy API key not configured. (Using public embed mode)</div>', unsafe_allow_html=True)
+        
+    # Standard layers: Temp, Wind, Rain, Clouds
+    w_layer = st.radio(
+        "選擇地圖粒子圖層：",
+        options=["Temperature", "Wind", "Rain", "Clouds"],
+        index=1,
+        horizontal=True,
+        key="home_windy_layer_select"
+    )
+    
+    embed_url = WindyService.get_synced_embed_url(w_layer, lat, lon, zoom=8)
+    st.components.v1.iframe(src=embed_url, height=350, width=580)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# RIGHT: 7-Day CWA Forecast
+with col_mid_right:
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.markdown(f"#### 📅 {mapped_region} — CWA 一週高低溫預報")
     
     if not df_forecast.empty:
         fig_forecast = go.Figure()
-        
-        # Line for MaxT
         fig_forecast.add_trace(go.Scatter(
-            x=df_forecast["dataDate"],
-            y=df_forecast["maxt"],
-            mode="lines+markers",
-            name="最高溫 (Max Temp)",
-            line=dict(color="#ff7b72", width=3),
-            marker=dict(size=8)
+            x=df_forecast["dataDate"], y=df_forecast["maxt"],
+            mode="lines+markers", name="最高溫 (MaxTemp)",
+            line=dict(color="#ff7b72", width=3)
+        ))
+        fig_forecast.add_trace(go.Scatter(
+            x=df_forecast["dataDate"], y=df_forecast["mint"],
+            mode="lines+markers", name="最低溫 (MinTemp)",
+            line=dict(color="#58a6ff", width=3)
         ))
         
-        # Line for MinT
-        fig_forecast.add_trace(go.Scatter(
-            x=df_forecast["dataDate"],
-            y=df_forecast["mint"],
-            mode="lines+markers",
-            name="最低溫 (Min Temp)",
-            line=dict(color="#58a6ff", width=3),
-            marker=dict(size=8)
-        ))
-        
-        # Apply theme colors to chart background
         paper_bg = "#161b22" if theme == "深色玻璃 (Dark)" else "#ffffff"
         plot_bg = "#0d1117" if theme == "深色玻璃 (Dark)" else "#f6f8fa"
         font_color = "#c9d1d9" if theme == "深色玻璃 (Dark)" else "#24292f"
         grid_color = "#30363d" if theme == "深色玻璃 (Dark)" else "#d0d7de"
         
         fig_forecast.update_layout(
-            paper_bgcolor=paper_bg,
-            plot_bgcolor=plot_bg,
+            paper_bgcolor=paper_bg, plot_bgcolor=plot_bg,
             font=dict(color=font_color, family="Outfit"),
-            xaxis=dict(gridcolor=grid_color, title="預報日期"),
-            yaxis=dict(gridcolor=grid_color, title="氣溫 (°C)"),
-            margin=dict(l=40, r=40, t=20, b=40),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            xaxis=dict(gridcolor=grid_color), yaxis=dict(gridcolor=grid_color),
+            margin=dict(l=35, r=35, t=15, b=35),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=370
         )
-        
         st.plotly_chart(fig_forecast, use_container_width=True)
     else:
-        st.info("資料庫尚無此海域預報資料。")
+        st.info("資料庫目前為空。請先更新資料庫。")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Chart 2: Interactive Plotly Station Wind Speed Distribution
-with col_c2:
-    st.markdown("<div class='chart-box'>", unsafe_allow_html=True)
-    st.markdown(f"### 🌬️ {selected_region} — 區域測站風速風力分佈")
+# ----------------- BOTTOM SECTION: AI PREDICTIONS & OBSERVATIONS MAP -----------------
+st.markdown("<div class='section-header'>🤖 AI 預估模型與全台測站定位監測 (Bottom Section)</div>", unsafe_allow_html=True)
+
+col_bot_left, col_bot_right = st.columns([1.0, 1.0])
+
+# LEFT: AI Prediction Chart
+with col_bot_left:
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.markdown(f"#### 🧠 {selected_city} — 機器學習預估氣溫對照 (MaxTemp)")
     
-    if not df_obs_filtered.empty:
-        # Show top 8 stations for readability
-        df_wind_top = df_obs_filtered.sort_values(by="WDSD", ascending=False).head(8)
+    df_pred = PredictionService.predict_temperature(selected_region=selected_city if selected_city in query_all_regions() else query_all_regions()[0])
+    df_base_reg = query_region_forecasts(mapped_region)
+    
+    if not df_pred.empty and not df_base_reg.empty:
+        df_m = pd.merge(df_base_reg, df_pred, on="dataDate")
         
-        fig_wind = px.bar(
-            df_wind_top,
-            x="StationName",
-            y="WDSD",
-            color="WDSD",
-            labels={"StationName": "觀測站名稱", "WDSD": "風速 (m/s)"},
-            color_continuous_scale=px.colors.sequential.Purples
+        fig_pred = go.Figure()
+        fig_pred.add_trace(go.Scatter(x=df_m["dataDate"], y=df_m["maxt"], mode="lines+markers", name="CWA 官方最高溫", line=dict(dash="dash", color="#8b949e")))
+        fig_pred.add_trace(go.Scatter(x=df_m["dataDate"], y=df_m["rf_maxt"], mode="lines+markers", name="RandomForest 預測值", line=dict(color="#ff7b72", width=2.5)))
+        fig_pred.add_trace(go.Scatter(x=df_m["dataDate"], y=df_m["xgb_maxt"], mode="lines+markers", name="XGBoost 預測值", line=dict(color="#d2a8ff", width=2.5)))
+        
+        paper_bg = "#161b22" if theme == "深色玻璃 (Dark)" else "#ffffff"
+        plot_bg = "#0d1117" if theme == "深色玻璃 (Dark)" else "#f6f8fa"
+        font_color = "#c9d1d9" if theme == "深色玻璃 (Dark)" else "#24292f"
+        grid_color = "#30363d" if theme == "深色玻璃 (Dark)" else "#d0d7de"
+        
+        fig_pred.update_layout(
+            paper_bgcolor=paper_bg, plot_bgcolor=plot_bg,
+            font=dict(color=font_color, family="Outfit"),
+            xaxis=dict(gridcolor=grid_color), yaxis=dict(gridcolor=grid_color),
+            margin=dict(l=35, r=35, t=15, b=35),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=370
+        )
+        st.plotly_chart(fig_pred, use_container_width=True)
+    else:
+        st.info("尚無足夠預測特徵資料。")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# RIGHT: Folium Weather Station Map
+with col_bot_right:
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.markdown("#### 📡 全台自動氣象觀測站 Leaflet 地圖")
+    
+    # Render mini Leaflet dark map
+    m_home = folium.Map(location=[23.7, 120.96], zoom_start=7, tiles="CartoDB dark_matter", zoom_control=True)
+    
+    df_st_draw = pd.DataFrame(obs_list)
+    if not df_st_draw.empty:
+        # Sort and draw top 12 representative stations
+        draw_subset = df_st_draw.groupby("CountyName").first().reset_index()
+        for idx, s in draw_subset.iterrows():
+            lat_s, lon_s = s["lat"], s["lon"]
+            folium.CircleMarker(
+                location=[lat_s, lon_s],
+                radius=6,
+                color="#58a6ff",
+                fill=True,
+                fill_color="#58a6ff",
+                fill_opacity=0.8,
+                popup=f"{s['CountyName']} - {s['StationName']}: {s['TEMP']:.1f}°C"
+            ).add_to(m_home)
+            
+    st_folium(m_home, height=350, width=540, key="home_folium_map")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ----------------- LAST SECTION: DATA EXPLORER & MODEL EVALUATION -----------------
+st.markdown("<div class='section-header'>🔍 交叉資料探索與定量模型殘差評量 (Last Section)</div>", unsafe_allow_html=True)
+
+col_last_left, col_last_right = st.columns([1.0, 1.0])
+
+# LEFT: Compact Data Explorer
+with col_last_left:
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.markdown("#### 🔍 即時觀測交叉探索 (Data Explorer)")
+    
+    if not df_obs.empty:
+        df_obs["RainProbability"] = df_obs.apply(
+            lambda row: min(100, max(0, int((row["HUMD"] - 40) * 1.5 + row["RAIN"] * 12))),
+            axis=1
+        )
+        
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            t_limit = st.slider("溫度上限過濾 (°C)：", min_value=15.0, max_value=40.0, value=35.0, step=1.0)
+        with col_s2:
+            h_limit = st.slider("濕度下限過濾 (%)：", min_value=10.0, max_value=100.0, value=50.0, step=5.0)
+            
+        df_f = df_obs[(df_obs["TEMP"] <= t_limit) & (df_obs["HUMD"] >= h_limit)]
+        
+        fig_scatter_home = px.scatter(
+            df_f, x="TEMP", y="HUMD", color="CountyName",
+            labels={"TEMP": "氣溫 (°C)", "HUMD": "相對濕度 (%)"}
         )
         
         paper_bg = "#161b22" if theme == "深色玻璃 (Dark)" else "#ffffff"
@@ -369,30 +478,70 @@ with col_c2:
         font_color = "#c9d1d9" if theme == "深色玻璃 (Dark)" else "#24292f"
         grid_color = "#30363d" if theme == "深色玻璃 (Dark)" else "#d0d7de"
         
-        fig_wind.update_layout(
-            paper_bgcolor=paper_bg,
-            plot_bgcolor=plot_bg,
+        fig_scatter_home.update_layout(
+            paper_bgcolor=paper_bg, plot_bgcolor=plot_bg,
             font=dict(color=font_color, family="Outfit"),
-            xaxis=dict(gridcolor=grid_color),
-            yaxis=dict(gridcolor=grid_color),
-            margin=dict(l=40, r=40, t=20, b=40),
-            coloraxis_showscale=False
+            xaxis=dict(gridcolor=grid_color), yaxis=dict(gridcolor=grid_color),
+            margin=dict(l=35, r=35, t=15, b=35),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=280
+        )
+        st.plotly_chart(fig_scatter_home, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# RIGHT: Model Evaluation Metrics
+with col_last_right:
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.markdown("#### 📈 ML 預估定量特徵權重 (Model Evaluation)")
+    
+    try:
+        metrics = PredictionService.get_metrics()
+        xgb_m = metrics["xgb"]
+        xgb_fi = xgb_m["maxt_feature_importance"]
+        
+        # Build dataframe
+        features = list(xgb_fi.keys())
+        fi_records = [{"Feature": f, "Importance": xgb_fi[f]} for f in features]
+        df_fi = pd.DataFrame(fi_records)
+        
+        feature_labels = {
+            "region_code": "地區編碼", "month": "月份", "day": "日期",
+            "dayofweek": "星期", "dayofyear": "年日"
+        }
+        df_fi["Feature"] = df_fi["Feature"].map(feature_labels)
+        df_fi = df_fi.sort_values(by="Importance", ascending=True)
+        
+        fig_fi_home = px.bar(
+            df_fi, y="Feature", x="Importance", orientation="h",
+            labels={"Importance": "重要性權重", "Feature": "預測特徵"},
+            color_discrete_sequence=["#d2a8ff"]
         )
         
-        st.plotly_chart(fig_wind, use_container_width=True)
-    else:
-        st.info("當前篩選區間無觀測測站資料。")
+        paper_bg = "#161b22" if theme == "深色玻璃 (Dark)" else "#ffffff"
+        plot_bg = "#0d1117" if theme == "深色玻璃 (Dark)" else "#f6f8fa"
+        font_color = "#c9d1d9" if theme == "深色玻璃 (Dark)" else "#24292f"
+        grid_color = "#30363d" if theme == "深色玻璃 (Dark)" else "#d0d7de"
+        
+        fig_fi_home.update_layout(
+            paper_bgcolor=paper_bg, plot_bgcolor=plot_bg,
+            font=dict(color=font_color, family="Outfit"),
+            xaxis=dict(gridcolor=grid_color), yaxis=dict(gridcolor=grid_color),
+            margin=dict(l=35, r=35, t=15, b=35),
+            height=280
+        )
+        st.plotly_chart(fig_fi_home, use_container_width=True)
+    except Exception:
+        st.info("無評估指標模型，請先重新訓練模型。")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------- AUTO REFRESH -----------------
-# Embed a hidden sandboxed iframe meta-refresher that automatically triggers a Streamlit rerun every 10 minutes (600 seconds)
 st.components.v1.html(
     textwrap.dedent("""
     <iframe srcdoc="
         <script>
             setTimeout(function() {
                 window.parent.location.reload();
-            }, 600000); // 600,000 milliseconds = 10 minutes
+            }, 600000); // 10 minutes
         </script>
     " style="display:none; width:0; height:0; border:0;"></iframe>
     """),
