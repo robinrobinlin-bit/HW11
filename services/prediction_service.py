@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from services.database import query_all_regions, query_region_forecasts
 
-# Scikit-learn and XGBoost imports inside functions to prevent import errors during installation
 # Paths relative to project root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -115,7 +114,7 @@ class PredictionService:
     def train_models():
         """
         Trains RandomForestRegressor and XGBoostRegressor models on SQLite CWA data.
-        Saves trained models into models/ folder and returns accuracy metrics.
+        Saves trained models into models/ folder and returns accuracy metrics (including MAPE and training loss).
         """
         from sklearn.ensemble import RandomForestRegressor
         from sklearn.model_selection import train_test_split
@@ -131,6 +130,12 @@ class PredictionService:
         X_train, X_test, y_min_train, y_min_test = train_test_split(X, y_min, test_size=0.2, random_state=42)
         _, _, y_max_train, y_max_test = train_test_split(X, y_max, test_size=0.2, random_state=42)
         
+        # Helper for MAPE calculation
+        def get_mape(y_true, y_pred):
+            y_true_arr = np.array(y_true)
+            y_pred_arr = np.array(y_pred)
+            return round(float(np.mean(np.abs((y_true_arr - y_pred_arr) / np.maximum(np.abs(y_true_arr), 1.0))) * 100), 2)
+            
         # 1. Train RandomForest Models
         rf_min = RandomForestRegressor(n_estimators=100, max_depth=6, random_state=42)
         rf_max = RandomForestRegressor(n_estimators=100, max_depth=6, random_state=42)
@@ -138,12 +143,31 @@ class PredictionService:
         rf_min.fit(X_train, y_min_train)
         rf_max.fit(X_train, y_max_train)
         
-        # 2. Train XGBoost Models
-        xgb_min = XGBRegressor(n_estimators=50, max_depth=4, learning_rate=0.1, random_state=42)
-        xgb_max = XGBRegressor(n_estimators=50, max_depth=4, learning_rate=0.1, random_state=42)
+        # 2. Train XGBoost Models (with training loss tracking)
+        xgb_min = XGBRegressor(n_estimators=100, max_depth=4, learning_rate=0.08, random_state=42)
+        xgb_max = XGBRegressor(n_estimators=100, max_depth=4, learning_rate=0.08, random_state=42)
         
-        xgb_min.fit(X_train, y_min_train)
-        xgb_max.fit(X_train, y_max_train)
+        xgb_min.fit(
+            X_train, y_min_train,
+            eval_set=[(X_train, y_min_train), (X_test, y_min_test)],
+            verbose=False
+        )
+        xgb_max.fit(
+            X_train, y_max_train,
+            eval_set=[(X_train, y_max_train), (X_test, y_max_test)],
+            verbose=False
+        )
+        
+        # Retrieve XGBoost Training Loss Epochs
+        xgb_min_evals = xgb_min.evals_result()
+        xgb_max_evals = xgb_max.evals_result()
+        
+        xgb_metrics_extra = {
+            "mint_train_loss": [float(x) for x in xgb_min_evals["validation_0"]["rmse"]],
+            "mint_val_loss": [float(x) for x in xgb_min_evals["validation_1"]["rmse"]],
+            "maxt_train_loss": [float(x) for x in xgb_max_evals["validation_0"]["rmse"]],
+            "maxt_val_loss": [float(x) for x in xgb_max_evals["validation_1"]["rmse"]]
+        }
         
         # Evaluate RandomForest
         rf_min_pred = rf_min.predict(X_test)
@@ -152,10 +176,14 @@ class PredictionService:
         rf_metrics = {
             "mint_mae": round(mean_absolute_error(y_min_test, rf_min_pred), 2),
             "mint_rmse": round(mean_squared_error(y_min_test, rf_min_pred)**0.5, 2),
+            "mint_mape": get_mape(y_min_test, rf_min_pred),
             "mint_r2": round(r2_score(y_min_test, rf_min_pred), 2),
+            
             "maxt_mae": round(mean_absolute_error(y_max_test, rf_max_pred), 2),
             "maxt_rmse": round(mean_squared_error(y_max_test, rf_max_pred)**0.5, 2),
+            "maxt_mape": get_mape(y_max_test, rf_max_pred),
             "maxt_r2": round(r2_score(y_max_test, rf_max_pred), 2),
+            
             "mint_feature_importance": dict(zip(feature_cols, rf_min.feature_importances_.round(3))),
             "maxt_feature_importance": dict(zip(feature_cols, rf_max.feature_importances_.round(3)))
         }
@@ -167,12 +195,22 @@ class PredictionService:
         xgb_metrics = {
             "mint_mae": round(mean_absolute_error(y_min_test, xgb_min_pred), 2),
             "mint_rmse": round(mean_squared_error(y_min_test, xgb_min_pred)**0.5, 2),
+            "mint_mape": get_mape(y_min_test, xgb_min_pred),
             "mint_r2": round(r2_score(y_min_test, xgb_min_pred), 2),
+            
             "maxt_mae": round(mean_absolute_error(y_max_test, xgb_max_pred), 2),
             "maxt_rmse": round(mean_squared_error(y_max_test, xgb_max_pred)**0.5, 2),
+            "maxt_mape": get_mape(y_max_test, xgb_max_pred),
             "maxt_r2": round(r2_score(y_max_test, xgb_max_pred), 2),
+            
             "mint_feature_importance": dict(zip(feature_cols, xgb_min.feature_importances_.astype(float).round(3))),
-            "maxt_feature_importance": dict(zip(feature_cols, xgb_max.feature_importances_.astype(float).round(3)))
+            "maxt_feature_importance": dict(zip(feature_cols, xgb_max.feature_importances_.astype(float).round(3))),
+            
+            # Loss logs
+            "mint_train_loss": xgb_metrics_extra["mint_train_loss"],
+            "mint_val_loss": xgb_metrics_extra["mint_val_loss"],
+            "maxt_train_loss": xgb_metrics_extra["maxt_train_loss"],
+            "maxt_val_loss": xgb_metrics_extra["maxt_val_loss"]
         }
         
         # Save models to models/ folder
@@ -336,3 +374,27 @@ class PredictionService:
             "xgb_predicted": xgb_max_pred.round(1)
         })
         return df_scatter
+
+    @staticmethod
+    def get_correlation_matrix():
+        """Calculates correlation matrix between features and targets."""
+        df_all = PredictionService.prepare_dataset()
+        df_feats = df_all.copy()
+        df_feats["date"] = pd.to_datetime(df_feats["dataDate"])
+        df_feats["month"] = df_feats["date"].dt.month
+        df_feats["day"] = df_feats["date"].dt.day
+        df_feats["dayofweek"] = df_feats["date"].dt.dayofweek
+        df_feats["dayofyear"] = df_feats["date"].dt.dayofyear
+        df_feats["region_code"] = df_feats["regionName"].map(REGION_ENCODING).fillna(-1)
+        
+        cols = ["region_code", "month", "day", "dayofweek", "dayofyear", "mint", "maxt"]
+        df_corr = df_feats[cols].rename(columns={
+            "region_code": "地區編碼",
+            "month": "月份",
+            "day": "日期",
+            "dayofweek": "星期",
+            "dayofyear": "年度累計日",
+            "mint": "最低氣溫",
+            "maxt": "最高氣溫"
+        })
+        return df_corr.corr()
