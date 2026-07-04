@@ -106,7 +106,7 @@ def generate_mock_forecast_json():
         }
     }
 
-def _raw_fetch_forecast():
+def _raw_fetch_forecast() -> dict:
     """Uncached core logic for forecast queries."""
     api_key = os.getenv("CWA_TOKEN") or os.getenv("CWA_API_KEY")
     if not api_key:
@@ -126,20 +126,20 @@ def _raw_fetch_forecast():
         print(f"[ERROR] Connection error: {e}. Using mock forecast.")
         return generate_mock_forecast_json()
 
-def fetch_weather_forecast():
+def fetch_weather_forecast() -> dict:
     """Fetches regional weekly weather forecasts from CWA API (with 30-min Streamlit cache)."""
     try:
         import streamlit as st
         # Wrapped cached function inside
         @st.cache_data(ttl=1800)
-        def _cached_fetch():
+        def _cached_fetch() -> dict:
             return _raw_fetch_forecast()
         return _cached_fetch()
     except Exception:
         # Fallback if called outside Streamlit context (e.g. standalone test scripts)
         return _raw_fetch_forecast()
 
-def extract_forecast_temperature(data):
+def extract_forecast_temperature(data: dict) -> list:
     """Parses forecast JSON and extracts MinT and MaxT values."""
     root_key = "cwaopendata" if "cwaopendata" in data else "cwbopendata" if "cwbopendata" in data else None
     if not root_key:

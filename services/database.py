@@ -1,25 +1,26 @@
 import os
 import sqlite3
 import pandas as pd
+from typing import List, Dict, Any, Optional
 
 # Path to data/data.db relative to this file's directory
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_FILE = os.path.join(DATA_DIR, "data.db")
+BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR: str = os.path.join(BASE_DIR, "data")
+DB_FILE: str = os.path.join(DATA_DIR, "data.db")
 
-def get_connection():
+def get_connection() -> sqlite3.Connection:
     """
     Returns a sqlite3 connection object. Creates data directory if missing.
     """
     os.makedirs(DATA_DIR, exist_ok=True)
     return sqlite3.connect(DB_FILE)
 
-def init_db():
+def init_db() -> None:
     """
     Initializes the SQLite database and creates the TemperatureForecasts table.
     Uses a UNIQUE constraint on (regionName, dataDate) to handle updates gracefully.
     """
-    conn = None
+    conn: Optional[sqlite3.Connection] = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -44,7 +45,7 @@ def init_db():
         if conn:
             conn.close()
 
-def save_forecasts(forecasts):
+def save_forecasts(forecasts: List[Dict[str, Any]]) -> None:
     """
     Saves a list of parsed forecast dictionaries into the database.
     Uses INSERT OR REPLACE to update existing forecasts for the same region and date.
@@ -53,7 +54,7 @@ def save_forecasts(forecasts):
         print("[WARNING] No forecasts to save.")
         return
         
-    conn = None
+    conn: Optional[sqlite3.Connection] = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -77,16 +78,16 @@ def save_forecasts(forecasts):
         if conn:
             conn.close()
 
-def query_all_regions():
+def query_all_regions() -> List[str]:
     """
     Queries and returns all distinct region names from the database.
     """
-    conn = None
+    conn: Optional[sqlite3.Connection] = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT regionName FROM TemperatureForecasts ORDER BY regionName")
-        regions = [row[0] for row in cursor.fetchall()]
+        regions: List[str] = [row[0] for row in cursor.fetchall()]
         return regions
     except Exception as e:
         print(f"[ERROR] Failed to query regions: {e}")
@@ -95,11 +96,11 @@ def query_all_regions():
         if conn:
             conn.close()
 
-def query_central_forecasts():
+def query_central_forecasts() -> pd.DataFrame:
     """
     Queries and returns all weather forecast records for the Central Taiwan Sea Area (中部地區).
     """
-    conn = None
+    conn: Optional[sqlite3.Connection] = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -109,7 +110,7 @@ def query_central_forecasts():
         if not rows:
             return pd.DataFrame()
             
-        central_region_name = rows[0][0]
+        central_region_name: str = rows[0][0]
         
         query = """
             SELECT id, regionName, dataDate, mint, maxt 
@@ -117,7 +118,7 @@ def query_central_forecasts():
             WHERE regionName = ? 
             ORDER BY dataDate
         """
-        df = pd.read_sql_query(query, conn, params=(central_region_name,))
+        df: pd.DataFrame = pd.read_sql_query(query, conn, params=(central_region_name,))
         return df
     except Exception as e:
         print(f"[ERROR] Failed to query Central region forecasts: {e}")
@@ -126,11 +127,11 @@ def query_central_forecasts():
         if conn:
             conn.close()
 
-def query_region_forecasts(region_name):
+def query_region_forecasts(region_name: str) -> pd.DataFrame:
     """
     Queries and returns all weather forecast records for a specific region.
     """
-    conn = None
+    conn: Optional[sqlite3.Connection] = None
     try:
         conn = get_connection()
         query = """
@@ -139,7 +140,7 @@ def query_region_forecasts(region_name):
             WHERE regionName = ? 
             ORDER BY dataDate
         """
-        df = pd.read_sql_query(query, conn, params=(region_name,))
+        df: pd.DataFrame = pd.read_sql_query(query, conn, params=(region_name,))
         return df
     except Exception as e:
         print(f"[ERROR] Failed to query forecasts for region {region_name}: {e}")

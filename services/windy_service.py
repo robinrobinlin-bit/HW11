@@ -4,12 +4,12 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-WINDY_API_KEY = os.getenv("WINDY_API_KEY")
+WINDY_API_KEY: str = os.getenv("WINDY_API_KEY", "")
 
-TAIWAN_CITIES_COORDS = {
+TAIWAN_CITIES_COORDS: dict = {
+    "基隆市": {"lat": 25.128, "lon": 121.740, "region": "臺灣北部海面"},
     "臺北市": {"lat": 25.033, "lon": 121.565, "region": "臺灣北部海面"},
     "新北市": {"lat": 25.012, "lon": 121.465, "region": "臺灣北部海面"},
-    "基隆市": {"lat": 25.128, "lon": 121.740, "region": "臺灣北部海面"},
     "桃園市": {"lat": 24.989, "lon": 121.313, "region": "臺灣北部海面"},
     "新竹市": {"lat": 24.813, "lon": 120.967, "region": "臺灣北部海面"},
     "新竹縣": {"lat": 24.838, "lon": 121.010, "region": "臺灣北部海面"},
@@ -37,23 +37,23 @@ class WindyService:
     """
     
     @staticmethod
-    def is_api_key_configured():
+    def is_api_key_configured() -> bool:
         """Returns True if a valid WINDY_API_KEY is found in environment variables."""
         return bool(WINDY_API_KEY)
         
     @staticmethod
-    def get_embed_url(layer_name):
+    def get_embed_url(layer_name: str) -> str:
         """Deprecated: Returns default center embed URL."""
         return WindyService.get_synced_embed_url(layer_name, 23.7, 120.96)
         
     @staticmethod
-    def get_synced_embed_url(layer_name, lat, lon, zoom=8):
+    def get_synced_embed_url(layer_name: str, lat: float, lon: float, zoom: int = 8) -> str:
         """
         Returns the appropriate Windy.com embed URL centered at the selected coordinates.
         Supports standard CWA/Windy layers.
         """
         # Map element layers to Windy overlay keys
-        layer_map = {
+        layer_map: dict = {
             "Temperature": "temp",
             "Wind": "wind",
             "Rain": "rain",
@@ -68,13 +68,10 @@ class WindyService:
             "濕度": "rh"
         }
         
-        overlay = layer_map.get(layer_name, "wind")
+        overlay: str = layer_map.get(layer_name, "wind")
+        key_param: str = f"&key={WINDY_API_KEY}" if WINDY_API_KEY else ""
         
-        # If API key is configured, we can append it if Windy premium widget supports it,
-        # otherwise we utilize the standard embed parameter format.
-        key_param = f"&key={WINDY_API_KEY}" if WINDY_API_KEY else ""
-        
-        url = (
+        url: str = (
             f"https://embed.windy.com/embed2.html?"
             f"lat={lat}&lon={lon}&zoom={zoom}&level=surface&overlay={overlay}"
             f"&menu=&message=&marker=&calendar=now&pressure="
