@@ -300,6 +300,7 @@ with col_center:
         st.markdown(f"<div style='font-size:0.8rem; color:#8b949e; margin-top:8px;'>更新於 {last_update_str}</div>", unsafe_allow_html=True)
     with col_b2:
         if st.button("🔄 重新整理", key="refresh_obs_page", use_container_width=True):
+            st.cache_data.clear()
             st.session_state.observations = ObservationService.get_latest_observations()
             st.rerun()
 

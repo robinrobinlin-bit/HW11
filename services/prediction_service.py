@@ -232,14 +232,37 @@ class PredictionService:
         return metrics
 
     @staticmethod
+    def load_model(filename):
+        """Loads and caches a serialized machine learning model using st.cache_resource."""
+        filepath = os.path.join(MODELS_DIR, filename)
+        try:
+            import streamlit as st
+            @st.cache_resource
+            def _cached_load(path):
+                print(f"[INFO] Caching ML model from file: {path}")
+                with open(path, "rb") as f:
+                    return pickle.load(f)
+            return _cached_load(filepath)
+        except Exception:
+            with open(filepath, "rb") as f:
+                return pickle.load(f)
+
+    @staticmethod
     def get_metrics():
-        """Loads and returns evaluation metrics from models/ folder."""
+        """Loads and returns evaluation metrics from models/ folder (cached)."""
         metrics_file = os.path.join(MODELS_DIR, "metrics.pkl")
         if not os.path.exists(metrics_file):
-            # Train on the fly if models don't exist
             return PredictionService.train_models()
-        with open(metrics_file, "rb") as f:
-            return pickle.load(f)
+        try:
+            import streamlit as st
+            @st.cache_data
+            def _cached_metrics(path):
+                with open(path, "rb") as f:
+                    return pickle.load(f)
+            return _cached_metrics(metrics_file)
+        except Exception:
+            with open(metrics_file, "rb") as f:
+                return pickle.load(f)
 
     @staticmethod
     def predict_temperature(region_name):
@@ -247,16 +270,12 @@ class PredictionService:
         Generates 7-day temperature forecasts for region_name using trained models.
         Export results to data/prediction_results.csv.
         """
-        # Load models
+        # Load models using cache_resource
         try:
-            with open(os.path.join(MODELS_DIR, "rf_min_model.pkl"), "rb") as f:
-                rf_min = pickle.load(f)
-            with open(os.path.join(MODELS_DIR, "rf_max_model.pkl"), "rb") as f:
-                rf_max = pickle.load(f)
-            with open(os.path.join(MODELS_DIR, "xgb_min_model.pkl"), "rb") as f:
-                xgb_min = pickle.load(f)
-            with open(os.path.join(MODELS_DIR, "xgb_max_model.pkl"), "rb") as f:
-                xgb_max = pickle.load(f)
+            rf_min = PredictionService.load_model("rf_min_model.pkl")
+            rf_max = PredictionService.load_model("rf_max_model.pkl")
+            xgb_min = PredictionService.load_model("xgb_min_model.pkl")
+            xgb_max = PredictionService.load_model("xgb_max_model.pkl")
         except Exception:
             # If models do not exist, train them first
             PredictionService.train_models()

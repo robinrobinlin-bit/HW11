@@ -106,8 +106,8 @@ def generate_mock_forecast_json():
         }
     }
 
-def fetch_weather_forecast():
-    """Fetches regional weekly weather forecasts from CWA API."""
+def _raw_fetch_forecast():
+    """Uncached core logic for forecast queries."""
     api_key = os.getenv("CWA_TOKEN") or os.getenv("CWA_API_KEY")
     if not api_key:
         print("[WARNING] CWA API key not found. Using mock forecast data.")
@@ -125,6 +125,19 @@ def fetch_weather_forecast():
     except Exception as e:
         print(f"[ERROR] Connection error: {e}. Using mock forecast.")
         return generate_mock_forecast_json()
+
+def fetch_weather_forecast():
+    """Fetches regional weekly weather forecasts from CWA API (with 30-min Streamlit cache)."""
+    try:
+        import streamlit as st
+        # Wrapped cached function inside
+        @st.cache_data(ttl=1800)
+        def _cached_fetch():
+            return _raw_fetch_forecast()
+        return _cached_fetch()
+    except Exception:
+        # Fallback if called outside Streamlit context (e.g. standalone test scripts)
+        return _raw_fetch_forecast()
 
 def extract_forecast_temperature(data):
     """Parses forecast JSON and extracts MinT and MaxT values."""
@@ -233,8 +246,8 @@ def generate_mock_observations():
         
     return stations
 
-def fetch_realtime_observations():
-    """Fetches live weather station observations from CWA O-A0003-001 API."""
+def _raw_fetch_observations():
+    """Uncached core logic for CWA observations API."""
     api_key = os.getenv("CWA_TOKEN") or os.getenv("CWA_API_KEY")
     if not api_key:
         print("[WARNING] CWA API key not found. Using mock observations.")
@@ -304,6 +317,19 @@ def fetch_realtime_observations():
     except Exception as e:
         print(f"[ERROR] Connection error: {e}. Using mock observations.")
         return generate_mock_observations()
+
+def fetch_realtime_observations():
+    """Fetches live weather station observations from CWA API (with 5-min Streamlit cache)."""
+    try:
+        import streamlit as st
+        # Wrapped cached function inside
+        @st.cache_data(ttl=300)
+        def _cached_fetch():
+            return _raw_fetch_observations()
+        return _cached_fetch()
+    except Exception:
+        # Fallback if called outside Streamlit context
+        return _raw_fetch_observations()
 
 def compute_extremes(stations):
     """Computes high temperature, low temperature, max rainfall, and max wind speed."""
