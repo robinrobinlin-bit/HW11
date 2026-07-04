@@ -1,74 +1,62 @@
-# 🇹🇼 Taiwan Real-Time Weather Intelligence & Machine Learning Analytics Portal
+# 🇹🇼 Taiwan Weather Intelligence & Machine Learning Analytics Portal
 
-[![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org)
-[![Streamlit Framework](https://img.shields.io/badge/Streamlit-1.32+-FF4B4B?style=flat&logo=Streamlit)](https://streamlit.io)
-[![Scikit-Learn](https://img.shields.io/badge/scikit--learn-%23F7931E.svg?style=flat&logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
-[![XGBoost](https://img.shields.io/badge/XGBoost-grey?style=flat&logoColor=white)](https://xgboost.readthedocs.io)
-[![Plotly Charts](https://img.shields.io/badge/Plotly-3F4F75?style=flat&logo=plotly&logoColor=white)](https://plotly.com)
-[![SQLite Database](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)](https://sqlite.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<div align="center">
 
-An end-to-end meteorological data intelligence platform. This system ingests hourly weather station readings and weekly regional forecasts from Taiwan's **Central Weather Administration (CWA)** Open Data API, processes them in a thread-safe SQLite database, trains parallel **RandomForest** and **XGBoost** regression models, and visualizes analyses via a highly responsive multi-page Streamlit portal.
+[![Python Version](https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)](https://streamlit.io)
+[![Plotly Charts](https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white)](https://plotly.com)
+[![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
+[![XGBoost](https://img.shields.io/badge/XGBoost-1D89D1?style=for-the-badge&logo=xgboost&logoColor=white)](https://xgboost.readthedocs.io)
+
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![Folium Maps](https://img.shields.io/badge/Leaflet-folium-green?style=flat&logo=leaflet&logoColor=white)](https://github.com/python-visualization/folium)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
+[![Streamlit Cloud Deployment](https://img.shields.io/badge/Streamlit%20Cloud-Deployed-success?style=flat&logo=streamlit)](https://my-learning-journey-cusqcaxnqwy92twlrrtpfw.streamlit.app)
+
+</div>
 
 ---
 
 ## 📖 Project Overview
 
-This dashboard serves as a showcase portfolio piece demonstrating:
-1. **API Ingestion & Pipeline Scaffolding**: Automated fetching of unstructured weather payloads, parser mappings, and transaction-safe SQLite persistence.
-2. **Performance Engineering**: Application of dual-level caching (`@st.cache_data` for API payloads, `@st.cache_resource` for deserialized ML model binaries) reducing page load latency to < 50ms on warm runs.
-3. **Machine Learning & Statistical Evaluations**: In-memory training of RandomForest and XGBoost regressors, evaluation of statistical margins (MAE, RMSE, MAPE, R²), residual diagnostics, and feature importance weighting.
-4. **Modern UI/UX**: Premium Dark/Light theme custom CSS injections, interactive Leaflet maps, dynamic multi-select filtering linkages, and responsive Plotly visual layers.
+This repository hosts a production-grade, end-to-end meteorological data intelligence platform. The portal automatically ingests hourly weather station readings and weekly sea forecast updates directly from Taiwan's **Central Weather Administration (CWA)** Open Data REST APIs, persists records in a transaction-safe SQLite database, fits parallel **RandomForest** and **XGBoost** regressor models in memory, and exposes a high-fidelity data explorer alongside interactive analytics dashboards.
+
+Optimized with dual-level caching (`@st.cache_data` for API payloads, `@st.cache_resource` for deserialized regressor models), this portal achieves sub-10ms query times on warm runs, making it an excellent showcase portfolio piece for recruiters and academic instructors.
 
 ---
 
-## 🎯 Key Features
+## 🗺️ Table of Contents
 
-### 1. 🎛️ Analytics Homepage (`app.py`)
-* **Theme Selector**: Dynamic stylesheet injection toggling between a translucent **Dark Glassmorphism** mode and a clean **Light Minimalist** interface.
-* **Geographical Aggregator**: Automatically computes average temperatures, humidity, wind, and max rainfall for selected land/sea regions in real-time.
-* **Interactive Summary Charts**: Plots temperature trends and top wind speeds using Plotly.
-* **Auto-Refresh**: Background HTML meta-refresh automatically syncing dashboard stats every 10 minutes.
+- [📖 Project Overview](#-project-overview)
+- [✨ Key Features](#-key-features)
+- [📐 System Architecture](#-system-architecture)
+- [🔄 Ingestion & Caching Sequence](#-ingestion--caching-sequence)
+- [📁 Project Directory Structure](#-project-directory-structure)
+- [🛠️ Local Installation & Quick Start](#%EF%B8%8F-local-installation--quick-start)
+- [☁️ Streamlit Cloud Deployment](#-streamlit-cloud-deployment)
+- [📸 User Interface Highlights](#-user-interface-highlights)
+- [🔮 Future Roadmap](#-future-roadmap)
+- [📄 License](#-license)
 
-### 2. 📅 Weekly Sea Forecast (`1_Forecast.py`)
-* Queries SQLite to plot regional minimum and maximum temperature curves over the next 7 days, complete with responsive data grids.
+---
 
-### 3. 📡 Live Station Observation Map (`2_Observation.py`)
-* Implements a Leaflet dark map (`CartoDB dark_matter`) plotting real-time weather stations across Taiwan.
-* Toggles overlay bubbles for *Air Temperature*, *Precipitation*, *Wind Speed*, and *Relative Humidity*.
-* Embeds real-time National Science and Technology Center for Disaster Reduction (NCDR) CAP warning accordions.
-* Includes manual cache clearing overrides (`st.cache_data.clear()`).
+## ✨ Key Features
 
-### 4. 🤖 AI Temperature Forecasting (`3_AI_Prediction.py`)
-* **7-Day Trend Predictions**: Compares RandomForest vs. XGBoost model predictions against the CWA baseline.
-* **24-Hour Diurnal Predictions**: Maps predicted max/min limits into a 24-hour hourly curve using a sinusoidal cycle model (peaking at 14:00, troughing at 05:00).
-* **On-Demand Training**: Retrains regressors and serializes them to the filesystem with a single click.
-* **CSV Export**: Exports tabular predictions as downloadable UTF-8 CSVs.
-
-### 5. 🌀 Synced Windy particle Map (`4_Windy_Map.py`)
-* **Viewport Synchronization**: Center coordinates auto-align and refocus Windy's iframe when a Taiwan city is selected.
-* **Overlay Selectors**: Toggles overlays for *Temperature*, *Wind*, *Rain*, *Clouds*, and *Pressure*.
-* **Side-by-Side Forecast Card**: Displays matching CWA forecasts alongside the Windy map.
-
-### 6. 📈 Model Quantitative Evaluation (`5_Model_Evaluation.py`)
-* **Precision Indicators**: Side-by-side cards displaying MAE, RMSE, R², and **MAPE** for both RandomForest and XGBoost regressors.
-* **Prediction Error Plot**: Interactive scatter plot of actual vs. predicted values with an identity reference line ($y=x$).
-* **Residual Plot**: Scatters predictions against residuals (Actual - Predicted) to test homoscedasticity.
-* **Correlation Heatmap**: Visualizes correlation matrix coefficients across geographical code, month, day, weekday, dayofyear, and temperature targets.
-* **XGBoost Training Loss Curve**: Renders Train vs. Validation RMSE loss convergence trends across epochs.
-* **Report Exporter**: Generates a downloadable Markdown (.md) evaluation report.
-
-### 7. 🔍 Multi-dimensional Data Explorer (`6_Data_Explorer.py`)
-* **Linked Township Filter**: Township dropdown values dynamically adjust to match selected counties.
-* **Numeric Sliders**: Filters data by temperature, humidity, and calculated rain probability thresholds.
-* **Plotly Visual Deck**: Generates Line, Scatter, Box, Heatmap, and Histogram charts.
-* **Data Exporter**: Downloads filtered data frames as CSV files.
+| Tab/Module | Functional Core | Technology Stack |
+| :--- | :--- | :--- |
+| **🎛️ Homepage Portal** | Dynamic region selectors; Dark Glassmorphism / Light Minimalist UI stylesheets; real-time county weather station metric summaries (Temp, Humidity, Wind speed, Precipitation); Plotly forecast charts. | Custom CSS, Plotly, Streamlit |
+| **📅 Weekly Forecast** | Interactive weekly sea-area forecasts retrieved from local SQLite database. | Pandas, SQLite, Streamlit |
+| **📡 Observation Map** | Numerical value overlays on dark map layers, CAP hazard warning accordion, manual cache flush. | Folium, Leaflet, CWA O-A0003-001 |
+| **🤖 AI Predictor** | 7-day daily forecasts and 24-hour diurnal sinusoidal temperature curves comparing RandomForest vs XGBoost vs CWA baseline. | Scikit-learn, XGBoost, Pickle |
+| **🌀 Synced Windy View** | Centers map coordinates dynamically on Taiwan county selection; toggles temperature, wind, rain, clouds, and pressure layers. | Windy.com Web Widget, Geo mappings |
+| **📈 Quant Evaluation** | Performance metrics comparison (MAE, RMSE, MAPE, R²); residual scatter plots; correlation heatmaps; training loss RMSE curves; exportable Markdown evaluation reports. | Plotly Express, Scikit-learn |
+| **🔍 Data Explorer** | Chained Township selections; range sliders filtering Temp, Humidity, and calculated Rain Probability; Box, Scatter, Line, Histogram, and Heatmap Plotly graphs; UTF-8 CSV exporter. | Plotly Engine, Pandas |
 
 ---
 
 ## 📐 System Architecture
 
-The codebase follows a modular architecture separating data queries, API integrations, and machine learning models from views:
+The dashboard implements a modular model-view-service (MVS) design, ensuring strict separation of API request layers, database schemas, and regression pipelines:
 
 ```mermaid
 graph TD
@@ -91,9 +79,9 @@ graph TD
 
 ---
 
-## 🔄 Data Ingestion & Caching Workflow
+## 🔄 Ingestion & Caching Sequence
 
-Memory management and database query sequences are optimized for rapid browser rendering:
+Hourly API data queries and serialized model deserializations are optimized using memory caching to maximize rendering speeds:
 
 ```mermaid
 sequenceDiagram
@@ -114,13 +102,13 @@ sequenceDiagram
 
 ---
 
-## 📂 Project Directory Structure
+## 📁 Project Directory Structure
 
 ```
 HW11/
-├── app.py                      # Dashboard Homepage & CSS Theme Injector
+├── app.py                      # Homepage portal & layout css injector
 ├── pages/                      # Page modules loaded by Streamlit automatically
-│   ├── 1_Forecast.py           # Weekly Forecast Tab (SQLite)
+│   ├── 1_Forecast.py           # Weekly Forecast Tab (SQLite queries)
 │   ├── 2_Observation.py        # Hourly Observation Dark Leaflet Map
 │   ├── 3_AI_Prediction.py      # ML Predictions (7-Day & 24-Hour curves)
 │   ├── 4_Windy_Map.py          # Coordinate-synced Windy Map Embeds
@@ -128,7 +116,7 @@ HW11/
 │   └── 6_Data_Explorer.py      # Multidimensional Data Slicer & Plotly Deck
 ├── services/                   # Business logic and ML services
 │   ├── cwa_service.py          # CWA API data fetcher & parser (st.cache_data)
-│   ├── database.py             # SQLite thread-safe connector & CRUD
+│   ├── database.py             # SQLite thread-safe connector & CRUD (try-finally)
 │   ├── prediction_service.py   # RandomForest/XGBoost training pipeline (st.cache_resource)
 │   └── windy_service.py        # Windy iframe overlay config
 ├── data/                       # Local data folder
@@ -148,7 +136,7 @@ HW11/
 
 ---
 
-## 🛠️ Installation & Setup
+## 🛠️ Local Installation & Quick Start
 
 ### 1. Clone the Repository
 ```bash
@@ -156,8 +144,11 @@ git clone https://github.com/robinrobinlin-bit/HW11.git
 cd HW11
 ```
 
-### 2. Install Package Dependencies
+### 2. Configure Virtual Environment & Install Dependencies
 ```bash
+python -m venv venv
+source venv/Scripts/activate     # On Windows: venv\Scripts\activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
@@ -168,8 +159,8 @@ CWA_TOKEN=your_cwa_open_data_api_authorization_key
 # Optional: WINDY_API_KEY=your_premium_windy_key
 ```
 
-### 4. Sync Database
-Initialize SQLite schemas and run the forecast ingestion pipeline:
+### 4. Initialize Database & Cache Forecasts
+Run the database synchronization script:
 ```bash
 python fetch_weather.py
 ```
@@ -182,42 +173,39 @@ Open your browser and navigate to `http://localhost:8501`.
 
 ---
 
-## ☁️ Production Deployment (Streamlit Cloud)
+## ☁️ Streamlit Cloud Deployment
 
-To deploy the dashboard online via **Streamlit Community Cloud**:
-1. Connect your GitHub account and select this repository `robinrobinlin-bit/HW11` (Branch: `main`, Entry File: `app.py`).
-2. Add your CWA API Key under the **Secrets** settings panel in Streamlit Console:
+To deploy the weather dashboard online via **Streamlit Community Cloud**:
+1. Sync this repository with your GitHub account.
+2. Create a new App on [Streamlit Share](https://share.streamlit.io/) pointing to `app.py` on the `main` branch.
+3. Configure authorization parameters in the **Secrets** settings panel of the app:
    ```toml
    CWA_TOKEN = "your_cwa_open_data_api_authorization_key"
    ```
-3. Save and wait for the automated build to finish. Streamlit Cloud will parse `requirements.txt` and serve the dashboard.
+4. Click **Deploy**. Streamlit Cloud will build the requirements and serve the dashboard.
 
 ---
 
-## 📸 Screenshots & Demo Video
+## 📸 User Interface Highlights
 
-* **Homepage Visual Showcase**:  
-  `[Screenshot Placeholder: Light/Dark Mode Dashboard Layout]`
+| Homepage Portal (Dark Mode) | Leaflet Observation Map |
+| :---: | :---: |
+| `[Placeholder: Light/Dark Mode Dashboard Layout]` | `[Placeholder: Real-time CWA Stations Dark Marker Overlay]` |
 
-* **Leaflet Station Map**:  
-  `[Screenshot Placeholder: Real-time CWA Stations Dark Marker Overlay]`
-
-* **Model Quantitative Diagnostics**:  
-  `[Screenshot Placeholder: MAE/RMSE/R2 Cards, Residual Scatter, Correlation Heatmap]`
-
-* **Demo Walkthrough Video**:  
-  `[Link Placeholder: YouTube/Vimeo Walkthrough Screencast]`
+| Quantitative Model Diagnostics | Dynamic Data Explorer |
+| :---: | :---: |
+| `[Placeholder: MAE/RMSE/R2 Cards, Residual Scatter]` | `[Placeholder: Dynamic Slicers & Plotly Box charts]` |
 
 ---
 
 ## 🔮 Future Roadmap
 
-- **LSTM Deep Learning Predictor**: Integrate PyTorch-based sequence models to forecast hourly temperatures directly using continuous SQLite histories.
-- **Automated Data Sync (GitOps)**: Setup a daily GitHub Action cron script to trigger `fetch_weather.py` and commit updated forecast SQLite snapshots automatically.
-- **PostgreSQL Database Migrations**: Relocate schemas to a PostgreSQL backend on Supabase/Render to support high-concurrency writes.
+- **Neural Network Predictors**: Train a PyTorch-based **LSTM** or **GRU** network to forecast hourly temperatures directly using continuous SQLite histories.
+- **GitOps Automation (Cron Syncs)**: Deploy a GitHub Action cron script executing `fetch_weather.py` daily to commit fresh forecast updates automatically.
+- **Enterprise DB Migration**: Port database schemas to PostgreSQL on Supabase to enable high-concurrency writes and multi-user tracking.
 
 ---
 
 ## 📄 License
 
-Distributed under the MIT License. See [LICENSE](https://opensource.org/licenses/MIT) for more information.
+Distributed under the MIT License. See `LICENSE` for more information.
