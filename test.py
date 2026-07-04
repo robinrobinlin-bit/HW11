@@ -5,8 +5,8 @@ import pandas as pd
 
 class TestWeatherDashboard(unittest.TestCase):
     def setUp(self):
-        self.db_file = "data.db"
-        self.csv_file = "weather_data.csv"
+        self.db_file = os.path.join("data", "data.db")
+        self.csv_file = os.path.join("data", "weather_data.csv")
         
     def test_database_exists(self):
         """Verify that SQLite database data.db exists."""
