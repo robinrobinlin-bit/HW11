@@ -387,34 +387,41 @@ col_bot_left, col_bot_right = st.columns([1.0, 1.0])
 with col_bot_left:
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.markdown(f"#### 🧠 {selected_city} — 機器學習預估氣溫對照 (MaxTemp)")
-    
-    df_pred = PredictionService.predict_temperature(selected_region=selected_city if selected_city in query_all_regions() else query_all_regions()[0])
-    df_base_reg = query_region_forecasts(mapped_region)
-    
-    if not df_pred.empty and not df_base_reg.empty:
-        df_m = pd.merge(df_base_reg, df_pred, on="dataDate")
-        
-        fig_pred = go.Figure()
-        fig_pred.add_trace(go.Scatter(x=df_m["dataDate"], y=df_m["maxt"], mode="lines+markers", name="CWA 官方最高溫", line=dict(dash="dash", color="#8b949e")))
-        fig_pred.add_trace(go.Scatter(x=df_m["dataDate"], y=df_m["rf_maxt"], mode="lines+markers", name="RandomForest 預測值", line=dict(color="#ff7b72", width=2.5)))
-        fig_pred.add_trace(go.Scatter(x=df_m["dataDate"], y=df_m["xgb_maxt"], mode="lines+markers", name="XGBoost 預測值", line=dict(color="#d2a8ff", width=2.5)))
-        
-        paper_bg = "#161b22" if theme == "深色玻璃 (Dark)" else "#ffffff"
-        plot_bg = "#0d1117" if theme == "深色玻璃 (Dark)" else "#f6f8fa"
-        font_color = "#c9d1d9" if theme == "深色玻璃 (Dark)" else "#24292f"
-        grid_color = "#30363d" if theme == "深色玻璃 (Dark)" else "#d0d7de"
-        
-        fig_pred.update_layout(
-            paper_bgcolor=paper_bg, plot_bgcolor=plot_bg,
-            font=dict(color=font_color, family="Outfit"),
-            xaxis=dict(gridcolor=grid_color), yaxis=dict(gridcolor=grid_color),
-            margin=dict(l=35, r=35, t=15, b=35),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            height=370
-        )
-        st.plotly_chart(fig_pred, use_container_width=True)
-    else:
-        st.info("尚無足夠預測特徵資料。")
+
+    try:
+        # AI Prediction block with validation
+        regions = query_all_regions()
+        if not regions:
+            st.warning("AI prediction data is unavailable because no forecast regions are found.")
+            df_pred = pd.DataFrame()
+        else:
+            region_name = selected_city if selected_city in regions else regions[0]
+            df_pred = PredictionService.predict_temperature(region_name)
+
+        if not df_pred.empty:
+            fig_pred = go.Figure()
+            fig_pred.add_trace(go.Scatter(x=df_pred["dataDate"], y=df_pred["maxt"], mode="lines+markers", name="CWA 官方最高溫", line=dict(dash="dash", color="#8b949e")))
+            fig_pred.add_trace(go.Scatter(x=df_pred["dataDate"], y=df_pred["rf_maxt"], mode="lines+markers", name="RandomForest 預測值", line=dict(color="#ff7b72", width=2.5)))
+            fig_pred.add_trace(go.Scatter(x=df_pred["dataDate"], y=df_pred["xgb_maxt"], mode="lines+markers", name="XGBoost 預測值", line=dict(color="#d2a8ff", width=2.5)))
+            paper_bg = "#161b22" if theme == "深色玻璃 (Dark)" else "#ffffff"
+            plot_bg = "#0d1117" if theme == "深色玻璃 (Dark)" else "#f6f8fa"
+            font_color = "#c9d1d9" if theme == "深色玻璃 (Dark)" else "#24292f"
+            grid_color = "#30363d" if theme == "深色玻璃 (Dark)" else "#d0d7de"
+            fig_pred.update_layout(
+                paper_bgcolor=paper_bg, plot_bgcolor=plot_bg,
+                font=dict(color=font_color, family="Outfit"),
+                xaxis=dict(gridcolor=grid_color), yaxis=dict(gridcolor=grid_color),
+                margin=dict(l=35, r=35, t=15, b=35),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=370
+            )
+            st.plotly_chart(fig_pred, use_container_width=True)
+        else:
+            st.info("尚無足夠預測特徵資料。")
+    except Exception as e:
+        st.warning("AI Prediction is temporarily unavailable.")
+        st.exception(e)
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 # RIGHT: Folium Weather Station Map
@@ -435,6 +442,15 @@ with col_bot_right:
         index=0,
         key="home_windy_layer_select_bot"
     )
+    
+    # AI Prediction block with validation
+    regions = query_all_regions()
+    if not regions:
+        st.warning("AI prediction data is unavailable because no forecast regions were found.")
+        df_pred = pd.DataFrame()
+    else:
+        region_name = selected_city if selected_city in regions else regions[0]
+        df_pred = PredictionService.predict_temperature(region_name)
     
     # Center map on selected county coordinates (default center: Taiwan 23.6978, 120.9605, zoom 7)
     map_lat = lat if selected_city else 23.6978
