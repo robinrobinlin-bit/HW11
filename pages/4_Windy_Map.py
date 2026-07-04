@@ -1,73 +1,134 @@
 import streamlit as st
-from services.windy_service import WindyService
+import pandas as pd
+from services.windy_service import WindyService, TAIWAN_CITIES_COORDS
+from services.database import query_region_forecasts
 
 # Page configuration
 st.set_page_config(
-    page_title="Windy 動態氣象圖 (Windy Map)",
+    page_title="Windy API 聯動地圖 (Windy Map)",
     page_icon="🌀",
     layout="wide"
 )
 
-# Custom styles
+# Custom Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+    
     html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
+        font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    .panel-box {
-        background-color: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 20px;
-        height: 100%;
+    
+    .status-badge-green {
+        background-color: rgba(46, 160, 67, 0.15);
+        color: #3fb950;
+        border: 1px solid rgba(46, 160, 67, 0.4);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        display: inline-block;
+        font-weight: 500;
+        margin-bottom: 12px;
     }
-    .panel-title {
-        color: #f0f6fc;
-        font-size: 1.1rem;
+    
+    .status-badge-yellow {
+        background-color: rgba(210, 153, 34, 0.15);
+        color: #d29922;
+        border: 1px solid rgba(210, 153, 34, 0.4);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        display: inline-block;
+        font-weight: 500;
+        margin-bottom: 12px;
+    }
+    
+    .forecast-card-title {
+        font-size: 1.15rem;
         font-weight: 700;
+        color: #f0f6fc;
         border-bottom: 1px solid #30363d;
         padding-bottom: 8px;
         margin-bottom: 12px;
     }
+    
+    .map-frame-box {
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🌀 Windy 動態氣象模擬地圖")
-st.write("此部分完整嵌入 Windy.com 粒子流體大氣數值預測模型。提供雷達回波降雨與動態大氣雲層模擬的可視化展示。")
+st.title("🌀 Windy API 經緯度聯動天氣地圖")
+st.write("結合 Windy 官方大氣環流粒子模擬與中央氣象署 (CWA) 本地資料庫預報，選取特定縣市即可自動重定地圖視角，並呈現所屬海區一週氣溫趨勢。")
 
-# 2-Column layout: center map, right settings
-col_map, col_settings = st.columns([4, 1.2], gap="medium")
+# ----------------- API KEY STATUS -----------------
+api_key_configured = WindyService.is_api_key_configured()
+if api_key_configured:
+    st.markdown('<div class="status-badge-green">🟢 Windy API 授權金鑰：已載入 (WINDY_API_KEY)</div>', unsafe_allow_html=True)
+else:
+    st.markdown('<div class="status-badge-yellow">⚪ Windy API 授權金鑰：未設定 (採用公用免費微件渲染模式)</div>', unsafe_allow_html=True)
 
-# Layer state
-if "windy_active_layer" not in st.session_state:
-    st.session_state.windy_active_layer = "雷達"
+# ----------------- SIDEBAR OR TOP SELECTORS -----------------
+col_sel1, col_sel2 = st.columns([1, 1])
+with col_sel1:
+    selected_city = st.selectbox(
+        "📍 選擇連動縣市：",
+        options=list(TAIWAN_CITIES_COORDS.keys()),
+        index=0
+    )
+with col_sel2:
+    selected_layer = st.selectbox(
+        "🗺️ 選擇 Windy 粒子圖層：",
+        options=["Temperature", "Wind", "Rain", "Clouds", "Pressure"],
+        index=1
+    )
+
+city_data = TAIWAN_CITIES_COORDS[selected_city]
+lat, lon, mapped_region = city_data["lat"], city_data["lon"], city_data["region"]
+
+# ----------------- MAIN LAYOUT: MAP (LEFT), CWA FORECAST (RIGHT) -----------------
+col_map, col_forecast = st.columns([3, 1.4], gap="large")
 
 with col_map:
-    # Fetch iframe URL
-    embed_url = WindyService.get_embed_url(st.session_state.windy_active_layer)
-    st.components.v1.iframe(src=embed_url, height=520, width=820)
+    st.markdown(f"### 🌐 Windy {selected_layer} 動態視角 ({selected_city} 周邊)")
+    embed_url = WindyService.get_synced_embed_url(selected_layer, lat, lon, zoom=8)
     
-    st.caption("🔍 滑鼠滾輪可縮放地圖，左鍵拖曳可移動視野。右下角播放鍵可預覽大氣流場未來演變趨勢。")
+    # Render interactive map
+    st.components.v1.iframe(src=embed_url, height=520, width=780)
+    st.caption(f"座標定位點：北緯 {lat}°，東經 {lon}° | 地圖同步重定位中...")
 
-with col_settings:
-    st.markdown("""<div class="panel-box">
-<div class="panel-title">Windy 圖層控制</div>
-</div>""", unsafe_allow_html=True)
+with col_forecast:
+    st.markdown(f"### 📅 {selected_city} 氣候預報 (CWA)")
+    st.markdown(f"<div style='font-size:0.85rem; color:#8b949e; margin-bottom:12px;'>對照區域：{mapped_region}</div>", unsafe_allow_html=True)
     
-    windy_layers = ["雷達", "天氣"]
-    for wl in windy_layers:
-        btn_type = "primary" if st.session_state.windy_active_layer == wl else "secondary"
-        icon = "📡 " if wl == "雷達" else "🌤️ "
-        label = f"{icon}動態雷達降雨" if wl == "雷達" else f"{icon}即時衛星雲圖"
-        if st.button(label, key=f"btn_windy_page_{wl}", type=btn_type, use_container_width=True):
-            st.session_state.windy_active_layer = wl
-            st.rerun()
-            
-    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+    df_region_fc = query_region_forecasts(mapped_region)
     
-    st.markdown("""<div style="background-color:#0d1117; border: 1px solid #30363d; border-radius:8px; padding:12px; font-size:0.75rem; color:#8b949e; line-height:1.4;">
-<b>圖層說明：</b><br/>
-• <b>動態雷達降雨：</b> 整合全球氣象雷達與降雨回波，顯示實時及預測累積降雨粒子。<br/>
-• <b>即時衛星雲圖：</b> 渲染低軌道氣象衛星紅外線/可見光雲層分佈，搭配高空風向流粒子。
-</div>""", unsafe_allow_html=True)
+    if df_region_fc.empty:
+        st.warning("資料庫目前無此區域之一週預報。請先更新資料庫！")
+    else:
+        # Style forecast output
+        display_fc = df_region_fc[["dataDate", "mint", "maxt"]].copy()
+        display_fc.columns = ["預報日期", "最低溫", "最高溫"]
+        
+        st.dataframe(
+            display_fc.style.format({
+                "最低溫": "{:.1f} °C",
+                "最高溫": "{:.1f} °C"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Add simple visual bar forecast representation
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<b>🌡️ 氣溫區間預覽：</b>", unsafe_allow_html=True)
+        for idx, row in display_fc.iterrows():
+            st.markdown(f"""
+            <div style="background-color:rgba(255,255,255,0.05); padding:6px 12px; border-radius:6px; margin-bottom:6px; display:flex; justify-content:space-between; font-size:0.82rem;">
+                <span style="color:#8b949e;">{row['預報日期']}</span>
+                <span style="font-weight:bold; color:#58a6ff;">{row['最低溫']:.1f}°C</span> ~ <span style="font-weight:bold; color:#ff7b72;">{row['最高溫']:.1f}°C</span>
+            </div>
+            """, unsafe_allow_html=True)
